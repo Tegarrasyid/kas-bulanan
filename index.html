@@ -1,11 +1,579 @@
-<!doctype html><html lang="id"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Kas Bulanan</title><link rel="stylesheet" href="style.css"><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script><script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script><script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script></head><body>
-<div id="auth" class="auth"><div class="card auth-card"><h1>Kas Bulanan</h1><p>Catatan kas anggota.</p><div id="msg"></div><div id="login"><input id="le" type="email" placeholder="Email"><input id="lp" type="password" placeholder="Password"><button class="primary" onclick="login()">Masuk</button><button class="link" onclick="toggleAuth(false)">Belum punya akun? Daftar</button></div><div id="register" class="hide"><input id="re" type="email" placeholder="Email"><input id="rp" type="password" placeholder="Password minimal 6 karakter"><button class="primary" onclick="register()">Daftar</button><button class="link" onclick="toggleAuth(true)">Sudah punya akun? Masuk</button></div></div></div>
-<div id="app" class="hide"><header><div><h1>Kas Bulanan</h1><p>Kelola pembayaran anggota dan pengeluaran.</p></div><div><span id="email"></span><button onclick="logout()">Keluar</button></div></header><main>
-<div class="month"><button onclick="moveMonth(-1)">← Sebelumnya</button><div><h2 id="monthTitle"></h2><button class="link" onclick="this.blur();todayMonth()">Bulan Ini</button></div><button onclick="moveMonth(1)">Berikutnya →</button></div>
-<div class="stats"><div><small>Pemasukan</small><b id="income">Rp0</b></div><div><small>Pengeluaran</small><b id="out">Rp0</b></div><div><small>Saldo</small><b id="saldo">Rp0</b></div><div><small>Sudah Lunas</small><b><span id="paid">0</span>/<span id="count">0</span></b><small id="unpaid">0 belum lunas</small></div></div>
-<div class="actions"><button class="primary" onclick="memberForm()">+ Anggota</button><button class="green" onclick="paymentForm()">+ Pembayaran</button><button class="orange" onclick="expenseForm()">+ Pengeluaran</button>
-    <!-- <button onclick="excel()">↓ Excel</button> -->
-    <button onclick="pdf()">↓ PDF</button></div> 
-<section class="card"><div class="section-head"><div><h2>Status Pembayaran</h2><p>Hijau = sudah lunas, kuning = masih kurang, merah = belum bayar.</p></div><div><label>Nominal kas / orang</label><input id="nominal" type="number" min="0" step="1000"><button onclick="saveSetting()">Simpan</button></div></div><div class="table-wrap"><table><thead><tr><th>No</th><th>Nama</th><th>Status</th><th>Jumlah</th><th>Tanggal</th><th>Pembayaran</th><th>Anggota</th></tr></thead><tbody id="members"></tbody></table></div></section>
-<section class="card"><div class="section-head"><div><h2>Pengeluaran</h2><p>Pengeluaran bulan yang sedang dipilih.</p></div><b id="expenseCount">0 transaksi</b></div><div class="table-wrap"><table><thead><tr><th>No</th><th>Tanggal</th><th>Keterangan</th><th>Jumlah</th><th>Aksi</th></tr></thead><tbody id="expenses"></tbody></table></div></section>
-</main></div><div id="modal" class="modal hide"><div class="modal-box"><div class="modal-head"><h2 id="modalTitle"></h2><button onclick="closeModal()">×</button></div><div id="modalBody"></div></div></div><div id="toast"></div><script src="app.js"></script></body></html>
+<!doctype html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <title>Kas Bulanan</title>
+
+    <link href="style.css" rel="stylesheet">
+    <!-- Bootstrap -->
+    <link
+        href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet"
+    >
+
+    <!-- Bootstrap Icons -->
+    <link
+        href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css"
+        rel="stylesheet"
+    >
+
+    <!-- Supabase -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <!-- Excel -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+    <!-- PDF -->
+    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
+</head>
+
+<body class="bg-light">
+
+<!-- =====================================================
+     LOGIN
+===================================================== -->
+
+<div
+    id="auth"
+    class="min-vh-100 d-flex align-items-center justify-content-center p-3"
+>
+    <div
+        class="card shadow-sm border-0"
+        style="width:min(410px,100%)"
+    >
+        <div class="card-body p-4">
+
+            <div class="text-center mb-4">
+
+                <div class="login-logo mx-auto mb-3">
+                    <img src="10.png" alt="Logo">
+                </div>
+
+                <h1 class="h3 fw-bold mb-1">
+                    Kas Bulanan
+                </h1>
+
+                <p class="text-secondary mb-0">
+                    Catatan kas anggota.
+                </p>
+
+            </div>
+
+            <div
+                id="msg"
+                class="small text-danger mb-2"
+            ></div>
+
+            <!-- LOGIN -->
+
+            <div id="login">
+
+                <label class="form-label">
+                    Email
+                </label>
+
+                <input
+                    id="le"
+                    type="email"
+                    class="form-control mb-3"
+                    placeholder="Email"
+                >
+
+                <label class="form-label">
+                    Password
+                </label>
+
+                <input
+                    id="lp"
+                    type="password"
+                    class="form-control mb-3"
+                    placeholder="Password"
+                >
+
+                <button
+                    class="btn btn-primary w-100"
+                    onclick="login()"
+                >
+                    Masuk
+                </button>
+
+                <button
+                    class="btn btn-link w-100 mt-2"
+                    onclick="toggleAuth(false)"
+                >
+                    Belum punya akun? Daftar
+                </button>
+
+            </div>
+
+            <!-- REGISTER -->
+
+            <div id="register" class="d-none">
+
+                <label class="form-label">
+                    Email
+                </label>
+
+                <input
+                    id="re"
+                    type="email"
+                    class="form-control mb-3"
+                    placeholder="Email"
+                >
+
+                <label class="form-label">
+                    Password
+                </label>
+
+                <input
+                    id="rp"
+                    type="password"
+                    class="form-control mb-3"
+                    placeholder="Password minimal 6 karakter"
+                >
+
+                <button
+                    class="btn btn-primary w-100"
+                    onclick="register()"
+                >
+                    Daftar
+                </button>
+
+                <button
+                    class="btn btn-link w-100 mt-2"
+                    onclick="toggleAuth(true)"
+                >
+                    Sudah punya akun? Masuk
+                </button>
+
+            </div>
+
+        </div>
+    </div>
+</div>
+
+
+<!-- =====================================================
+     APP
+===================================================== -->
+
+<div id="app" class="d-none">
+
+    <!-- NAVBAR -->
+
+    <nav class="navbar bg-white border-bottom sticky-top">
+
+        <div class="container">
+
+            <a
+                class="navbar-brand d-flex align-items-center gap-2 fw-bold"
+                href="#"
+            >
+
+                <span class="navbar-logo">
+                    <img src="10.png" alt="Logo">
+                </span>
+
+                <span>
+                    Kas Bulanan
+                </span>
+
+            </a>
+
+            <div class="d-flex align-items-center gap-2">
+
+                <span
+                    id="email"
+                    class="text-secondary small d-none d-md-inline"
+                ></span>
+
+                <button
+                    class="btn btn-outline-danger btn-sm"
+                    onclick="logout()"
+                >
+                    <i class="bi bi-box-arrow-right me-1"></i>
+                    Keluar
+                </button>
+
+            </div>
+
+        </div>
+
+    </nav>
+
+
+    <!-- MAIN -->
+
+    <main class="container py-4">
+
+        <!-- BULAN -->
+
+        <div
+            class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4"
+        >
+
+            <button
+                class="btn btn-outline-secondary"
+                onclick="moveMonth(-1)"
+            >
+                <i class="bi bi-chevron-left"></i>
+                Sebelumnya
+            </button>
+
+            <div class="text-center">
+
+                <h2
+                    id="monthTitle"
+                    class="h4 fw-bold mb-1"
+                ></h2>
+
+                <button
+                    class="btn btn-link btn-sm p-0"
+                    onclick="todayMonth()"
+                >
+                    Bulan Ini
+                </button>
+
+            </div>
+
+            <button
+                class="btn btn-outline-secondary"
+                onclick="moveMonth(1)"
+            >
+                Berikutnya
+                <i class="bi bi-chevron-right"></i>
+            </button>
+
+        </div>
+
+
+        <!-- STATISTIK -->
+
+        <div class="row g-3 mb-4">
+
+            <div class="col-6 col-xl-3">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-body">
+                        <small class="text-secondary">
+                            Pemasukan
+                        </small>
+
+                        <div
+                            id="income"
+                            class="fs-4 fw-bold"
+                        >
+                            Rp0
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+
+            <div class="col-6 col-xl-3">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-body">
+                        <small class="text-secondary">
+                            Pengeluaran
+                        </small>
+
+                        <div
+                            id="out"
+                            class="fs-4 fw-bold"
+                        >
+                            Rp0
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+
+            <div class="col-6 col-xl-3">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-body">
+                        <small class="text-secondary">
+                            Saldo
+                        </small>
+
+                        <div
+                            id="saldo"
+                            class="fs-4 fw-bold"
+                        >
+                            Rp0
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+
+            <div class="col-6 col-xl-3">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-body">
+
+                        <small class="text-secondary">
+                            Sudah Lunas
+                        </small>
+
+                        <div class="fs-4 fw-bold">
+                            <span id="paid">0</span>/<span id="count">0</span>
+                        </div>
+
+                        <small
+                            id="unpaid"
+                            class="text-secondary"
+                        >
+                            0 belum lunas
+                        </small>
+
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+
+        <!-- ACTION -->
+
+        <div class="d-flex flex-wrap gap-2 mb-4">
+
+            <button
+                class="btn btn-primary"
+                onclick="memberForm()"
+            >
+                <i class="bi bi-person-plus me-1"></i>
+                Anggota
+            </button>
+
+            <button
+                class="btn btn-success"
+                onclick="paymentForm()"
+            >
+                <i class="bi bi-cash-coin me-1"></i>
+                Pembayaran
+            </button>
+
+            <button
+                class="btn btn-warning"
+                onclick="expenseForm()"
+            >
+                <i class="bi bi-dash-circle me-1"></i>
+                Pengeluaran
+            </button>
+
+            <button
+                class="btn btn-outline-success"
+                onclick="downloadForm()"
+            >
+                <i class="bi bi-download me-1"></i>
+                Download
+            </button>
+
+        </div>
+
+
+        <!-- STATUS PEMBAYARAN -->
+
+        <section class="card border-0 shadow-sm mb-4">
+
+            <div class="card-body border-bottom">
+
+                <div class="row g-3 align-items-end">
+
+                    <div class="col-lg">
+
+                        <h2 class="h5 fw-bold mb-1">
+                            Status Pembayaran
+                        </h2>
+
+                        <p class="text-secondary small mb-0">
+                            Hijau = sudah lunas,
+                            kuning = masih kurang,
+                            merah = belum bayar.
+                        </p>
+
+                    </div>
+
+
+                    <div class="col-lg-3">
+
+                        <label class="form-label small fw-semibold">
+                            Nominal kas / orang
+                        </label>
+
+                        <div class="input-group">
+
+                            <input
+                                id="nominal"
+                                type="number"
+                                min="0"
+                                step="1000"
+                                class="form-control"
+                            >
+
+                            <button
+                                class="btn btn-outline-primary"
+                                onclick="saveSetting()"
+                            >
+                                Simpan
+                            </button>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <div class="table-responsive">
+
+                <table
+                    class="table table-bordered table-hover align-middle mb-0"
+                >
+
+                    <thead class="table-light">
+
+                        <tr>
+                            <th>No</th>
+                            <th>Nama</th>
+                            <th>Status</th>
+                            <th>Jumlah</th>
+                            <th>Tanggal</th>
+                            <th>Pembayaran</th>
+                            <th>Anggota</th>
+                        </tr>
+
+                    </thead>
+
+                    <tbody id="members"></tbody>
+
+                </table>
+
+            </div>
+
+        </section>
+
+
+        <!-- PENGELUARAN -->
+
+        <section class="card border-0 shadow-sm">
+
+            <div
+                class="card-body border-bottom d-flex flex-wrap justify-content-between align-items-center gap-2"
+            >
+
+                <div>
+
+                    <h2 class="h5 fw-bold mb-1">
+                        Pengeluaran
+                    </h2>
+
+                    <p class="text-secondary small mb-0">
+                        Pengeluaran bulan yang sedang dipilih.
+                    </p>
+
+                </div>
+
+                <span
+                    id="expenseCount"
+                    class="fw-bold"
+                >
+                    0 transaksi
+                </span>
+
+            </div>
+
+
+            <div class="table-responsive">
+
+                <table
+                    class="table table-bordered table-hover align-middle mb-0"
+                >
+
+                    <thead class="table-light">
+
+                        <tr>
+                            <th>No</th>
+                            <th>Tanggal</th>
+                            <th>Keterangan</th>
+                            <th>Jumlah</th>
+                            <th>Aksi</th>
+                        </tr>
+
+                    </thead>
+
+                    <tbody id="expenses"></tbody>
+
+                </table>
+
+            </div>
+
+        </section>
+
+    </main>
+
+</div>
+
+
+<!-- =====================================================
+     MODAL
+===================================================== -->
+
+<div
+    id="modal"
+    class="modal fade"
+    tabindex="-1"
+>
+
+    <div class="modal-dialog modal-dialog-centered">
+
+        <div class="modal-content">
+
+            <div class="modal-header">
+
+                <h2
+                    id="modalTitle"
+                    class="modal-title fs-5"
+                ></h2>
+
+                <button
+                    type="button"
+                    class="btn-close"
+                    onclick="closeModal()"
+                ></button>
+
+            </div>
+
+            <div
+                id="modalBody"
+                class="modal-body"
+            ></div>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<!-- TOAST -->
+
+<div
+    id="toast"
+    class="toast-container position-fixed bottom-0 end-0 p-3"
+></div>
+
+
+<!-- Bootstrap JS -->
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+<!-- App JS -->
+
+<script src="app.js"></script>
+
+</body>
+</html>
