@@ -93,6 +93,65 @@ body {
 }
 
 
+/* ================================
+   NAVIGASI BULAN
+================================ */
+
+.month-navigation {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: relative;
+    min-height: 70px;
+}
+
+.month-title {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.month-buttons {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* ================================
+   MODE HP
+================================ */
+
+@media (max-width: 576px) {
+
+    .month-navigation {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        min-height: auto;
+    }
+
+    .month-title {
+        position: static;
+        transform: none;
+        order: 1;
+    }
+
+    .month-buttons {
+        order: 2;
+        width: 100%;
+        justify-content: center;
+        gap: 10px;
+    }
+
+    .month-buttons .btn {
+        flex: 1;
+        max-width: 160px;
+    }
+
+}
+
+
 /* =====================================================
    TABLE
 ===================================================== */
