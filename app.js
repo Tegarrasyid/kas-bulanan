@@ -27,6 +27,11 @@ let payments = [];
 let expenses = [];
 let currentEditingPaymentId = null;
 
+// Saldo kas berjalan = pemasukan tunai yang benar-benar diterima
+// sampai bulan aktif dikurangi seluruh pengeluaran sampai bulan aktif.
+// Carryover tidak dihitung sebagai pemasukan baru.
+let runningBalance = 0;
+
 let setting = {
     monthly_amount: 5000
 };
@@ -288,7 +293,9 @@ async function load() {
         memberResult,
         paymentResult,
         expenseResult,
-        settingResult
+        settingResult,
+        balancePaymentResult,
+        balanceExpenseResult
     ] = await Promise.all([
 
         db
@@ -296,12 +303,14 @@ async function load() {
             .select("*")
             .order("name"),
 
+        // Hanya pembayaran pada bulan aktif untuk tabel/status.
         db
             .from("payments")
             .select("*")
             .gte("payment_date", r.s)
             .lte("payment_date", r.e),
 
+        // Hanya pengeluaran pada bulan aktif untuk tabel.
         db
             .from("expenses")
             .select("*")
@@ -312,14 +321,28 @@ async function load() {
         db
             .from("settings")
             .select("*")
-            .maybeSingle()
+            .maybeSingle(),
+
+        // Semua pembayaran tunai sampai akhir bulan aktif.
+        db
+            .from("payments")
+            .select("amount")
+            .lte("payment_date", r.e),
+
+        // Semua pengeluaran sampai akhir bulan aktif.
+        db
+            .from("expenses")
+            .select("amount")
+            .lte("expense_date", r.e)
     ]);
 
     const error =
         memberResult.error ||
         paymentResult.error ||
         expenseResult.error ||
-        settingResult.error;
+        settingResult.error ||
+        balancePaymentResult.error ||
+        balanceExpenseResult.error;
 
     if (error) {
         toast(error.message);
@@ -333,6 +356,26 @@ async function load() {
     setting = settingResult.data || {
         monthly_amount: 5000
     };
+
+    // Hitung saldo berjalan berdasarkan uang tunai yang benar-benar
+    // masuk dan pengeluaran. Carryover TIDAK menambah saldo lagi
+    // karena uangnya sudah masuk pada bulan sebelumnya.
+    const historicalIncome =
+        (balancePaymentResult.data || []).reduce(
+            (total, item) =>
+                total + Number(item.amount || 0),
+            0
+        );
+
+    const historicalExpense =
+        (balanceExpenseResult.data || []).reduce(
+            (total, item) =>
+                total + Number(item.amount || 0),
+            0
+        );
+
+    runningBalance =
+        historicalIncome - historicalExpense;
 
     $("nominal").value =
         setting.monthly_amount;
@@ -432,7 +475,9 @@ function render() {
 
     $("income").textContent = money(income);
     $("out").textContent = money(out);
-    $("saldo").textContent = money(income - out);
+    // Saldo membawa sisa uang dari bulan-bulan sebelumnya.
+    // Carryover bukan pemasukan baru karena uangnya sudah diterima sebelumnya.
+    $("saldo").textContent = money(runningBalance);
     $("count").textContent = members.length;
     $("paid").textContent = fullPaid;
     $("unpaid").textContent = `${notFull} belum lunas`;
@@ -1725,14 +1770,6 @@ function downloadForm() {
             <div class="d-grid gap-2">
 
                 <button
-                    class="btn btn-success"
-                    onclick="downloadExcelRange()"
-                >
-                    <i class="bi bi-file-earmark-excel me-1"></i>
-                    Download Excel
-                </button>
-
-                <button
                     class="btn btn-danger"
                     onclick="downloadPdfRange()"
                 >
@@ -1832,7 +1869,9 @@ async function getRangeData(
         memberResult,
         paymentResult,
         expenseResult,
-        settingResult
+        settingResult,
+        balancePaymentResult,
+        balanceExpenseResult
     ] = await Promise.all([
 
         db
@@ -1840,6 +1879,7 @@ async function getRangeData(
             .select("*")
             .order("name"),
 
+        // Pembayaran dalam rentang laporan untuk status per bulan.
         db
             .from("payments")
             .select("*")
@@ -1847,6 +1887,7 @@ async function getRangeData(
             .lte("payment_date", r.endDate)
             .order("payment_date"),
 
+        // Pengeluaran dalam rentang laporan.
         db
             .from("expenses")
             .select("*")
@@ -1857,7 +1898,21 @@ async function getRangeData(
         db
             .from("settings")
             .select("*")
-            .maybeSingle()
+            .maybeSingle(),
+
+        // Semua pembayaran tunai sampai akhir rentang laporan.
+        // Dibutuhkan agar saldo berjalan tetap membawa saldo
+        // dari bulan-bulan sebelum rentang laporan.
+        db
+            .from("payments")
+            .select("amount, payment_date")
+            .lte("payment_date", r.endDate),
+
+        // Semua pengeluaran sampai akhir rentang laporan.
+        db
+            .from("expenses")
+            .select("amount, expense_date")
+            .lte("expense_date", r.endDate)
     ]);
 
 
@@ -1865,7 +1920,9 @@ async function getRangeData(
         memberResult.error ||
         paymentResult.error ||
         expenseResult.error ||
-        settingResult.error;
+        settingResult.error ||
+        balancePaymentResult.error ||
+        balanceExpenseResult.error;
 
 
     if (error) {
@@ -1892,7 +1949,13 @@ async function getRangeData(
         setting:
             settingResult.data || {
                 monthly_amount: 5000
-            }
+            },
+
+        balancePayments:
+            balancePaymentResult.data || [],
+
+        balanceExpenses:
+            balanceExpenseResult.data || []
 
     };
 }
@@ -1976,6 +2039,32 @@ function buildMonthlyData(
             0
         );
 
+    // Saldo berjalan sampai akhir bulan ini.
+    // Hanya amount (uang tunai nyata) yang dihitung sebagai pemasukan.
+    // carryover tidak dihitung lagi sebagai pemasukan.
+    const targetEndDate = endDate;
+
+    const cumulativeIncome =
+        (data.balancePayments || []).reduce(
+            (total, item) =>
+                item.payment_date <= targetEndDate
+                    ? total + Number(item.amount || 0)
+                    : total,
+            0
+        );
+
+    const cumulativeExpense =
+        (data.balanceExpenses || []).reduce(
+            (total, item) =>
+                item.expense_date <= targetEndDate
+                    ? total + Number(item.amount || 0)
+                    : total,
+            0
+        );
+
+    const saldoBerjalan =
+        cumulativeIncome - cumulativeExpense;
+
 
     return {
 
@@ -1993,247 +2082,11 @@ function buildMonthlyData(
 
         out,
 
+        // Pemasukan/pengeluaran di atas tetap khusus bulan ini.
+        // Saldo adalah saldo kas yang dibawa dari bulan sebelumnya.
         saldo:
-            income - out
+            saldoBerjalan
     };
-}
-
-
-/* =====================================================
-   EXCEL
-===================================================== */
-
-async function downloadExcelRange() {
-
-    try {
-
-        const startMonth =
-            $("downloadStart").value;
-
-        const endMonth =
-            $("downloadEnd").value;
-
-
-        const data =
-            await getRangeData(
-                startMonth,
-                endMonth
-            );
-
-
-        const wb =
-            XLSX.utils.book_new();
-
-
-        const allStatus = [];
-
-        const allExpenses = [];
-
-        const summary = [];
-
-
-        let current =
-            new Date(
-                data.start
-            );
-
-
-        while (
-            current <= data.end
-        ) {
-
-            const monthly =
-                buildMonthlyData(
-                    data,
-                    current
-                );
-
-
-            /* STATUS */
-
-            monthly.statusRows.forEach(
-                row => {
-
-                    allStatus.push({
-                        Bulan: row.Bulan,
-                        No: row.No,
-                        Nama: row.Nama,
-                        "Target Kas": row["Target Kas"],
-                        "Bayar Tunai": row["Jumlah Bayar"],
-                        "Sisa Bulan Lalu": row["Sisa Bulan Lalu"],
-                        "Total Dihitung": row["Total Dihitung"],
-                        Status: row.Status,
-                        Kekurangan: row.Kekurangan,
-                        "Tanggal Bayar": row["Tanggal Bayar"]
-                    });
-
-                }
-            );
-
-
-            /* PENGELUARAN */
-
-            monthly.expenses.forEach(
-                (expense, index) => {
-
-                    allExpenses.push({
-
-                        Bulan:
-                            monthName(
-                                monthly.month
-                            ),
-
-                        No:
-                            index + 1,
-
-                        Tanggal:
-                            expense.expense_date,
-
-                        Keterangan:
-                            expense.description,
-
-                        Jumlah:
-                            Number(
-                                expense.amount
-                            )
-
-                    });
-
-                }
-            );
-
-
-            /* RINGKASAN */
-
-            const paid =
-                monthly.statusRows.filter(
-                    row =>
-                        row.Status ===
-                        "SUDAH LUNAS"
-                ).length;
-
-
-            const partial =
-                monthly.statusRows.filter(
-                    row =>
-                        row.Status ===
-                        "MASIH KURANG"
-                ).length;
-
-
-            const unpaid =
-                monthly.statusRows.filter(
-                    row =>
-                        row.Status ===
-                        "BELUM BAYAR"
-                ).length;
-
-
-            summary.push({
-
-                Bulan:
-                    monthName(
-                        monthly.month
-                    ),
-
-                "Total Anggota":
-                    data.members.length,
-
-                "Sudah Lunas":
-                    paid,
-
-                "Masih Kurang":
-                    partial,
-
-                "Belum Bayar":
-                    unpaid,
-
-                Pemasukan:
-                    monthly.income,
-
-                Pengeluaran:
-                    monthly.out,
-
-                Saldo:
-                    monthly.saldo
-
-            });
-
-
-            current =
-                new Date(
-                    current.getFullYear(),
-                    current.getMonth() + 1,
-                    1
-                );
-        }
-
-
-        /* SHEET STATUS */
-
-        const statusSheet =
-            XLSX.utils.json_to_sheet(
-                allStatus
-            );
-
-
-        /* SHEET PENGELUARAN */
-
-        const expenseSheet =
-            XLSX.utils.json_to_sheet(
-                allExpenses
-            );
-
-
-        /* SHEET RINGKASAN */
-
-        const summarySheet =
-            XLSX.utils.json_to_sheet(
-                summary
-            );
-
-
-        XLSX.utils.book_append_sheet(
-            wb,
-            statusSheet,
-            "Status Pembayaran"
-        );
-
-
-        XLSX.utils.book_append_sheet(
-            wb,
-            expenseSheet,
-            "Pengeluaran"
-        );
-
-
-        XLSX.utils.book_append_sheet(
-            wb,
-            summarySheet,
-            "Ringkasan"
-        );
-
-
-        const filename =
-            `Laporan-Kas-${startMonth}-sampai-${endMonth}.xlsx`;
-
-
-        XLSX.writeFile(
-            wb,
-            filename
-        );
-
-
-        closeModal();
-
-        toast(
-            "Excel berhasil didownload."
-        );
-
-    } catch (error) {
-
-        toast(error.message);
-    }
 }
 
 
