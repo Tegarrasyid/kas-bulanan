@@ -25,6 +25,7 @@ let month = new Date();
 let members = [];
 let payments = [];
 let expenses = [];
+let currentEditingPaymentId = null;
 
 let setting = {
     monthly_amount: 5000
@@ -283,7 +284,6 @@ async function load() {
     $("monthTitle").textContent =
         monthName(month);
 
-
     const [
         memberResult,
         paymentResult,
@@ -315,42 +315,41 @@ async function load() {
             .maybeSingle()
     ]);
 
-
     const error =
         memberResult.error ||
         paymentResult.error ||
         expenseResult.error ||
         settingResult.error;
 
-
     if (error) {
-
         toast(error.message);
-
         return;
     }
 
+    members = memberResult.data || [];
+    payments = paymentResult.data || [];
+    expenses = expenseResult.data || [];
 
-    members =
-        memberResult.data || [];
-
-    payments =
-        paymentResult.data || [];
-
-    expenses =
-        expenseResult.data || [];
-
-    setting =
-        settingResult.data || {
-            monthly_amount: 5000
-        };
-
+    setting = settingResult.data || {
+        monthly_amount: 5000
+    };
 
     $("nominal").value =
         setting.monthly_amount;
 
-
     render();
+}
+
+function paymentTotal(payment) {
+    return (
+        Number(payment?.amount) || 0
+    ) + (
+        Number(payment?.carryover_amount) || 0
+    );
+}
+
+function paymentCarryover(payment) {
+    return Number(payment?.carryover_amount) || 0;
 }
 
 
@@ -364,7 +363,7 @@ function paymentState(payment) {
         Number(setting.monthly_amount) || 0;
 
     const amount =
-        Number(payment?.amount) || 0;
+        paymentTotal(payment);
 
 
     if (amount <= 0) {
@@ -412,7 +411,6 @@ function render() {
             0
         );
 
-
     const out =
         expenses.reduce(
             (total, item) =>
@@ -420,310 +418,173 @@ function render() {
             0
         );
 
-
     const fullPaid =
         members.filter(member => {
-
-            const payment =
-                payments.find(
-                    item =>
-                        item.member_id === member.id
-                );
+            const payment = payments.find(
+                item => item.member_id === member.id
+            );
 
             return paymentState(payment) === "paid";
-
         }).length;
-
 
     const notFull =
         members.length - fullPaid;
 
-
-    $("income").textContent =
-        money(income);
-
-    $("out").textContent =
-        money(out);
-
-    $("saldo").textContent =
-        money(income - out);
-
-    $("count").textContent =
-        members.length;
-
-    $("paid").textContent =
-        fullPaid;
-
-    $("unpaid").textContent =
-        `${notFull} belum lunas`;
-
-    $("expenseCount").textContent =
-        `${expenses.length} transaksi`;
-
-
-    /* ================================================
-       TABLE ANGGOTA
-    ================================================= */
+    $("income").textContent = money(income);
+    $("out").textContent = money(out);
+    $("saldo").textContent = money(income - out);
+    $("count").textContent = members.length;
+    $("paid").textContent = fullPaid;
+    $("unpaid").textContent = `${notFull} belum lunas`;
+    $("expenseCount").textContent = `${expenses.length} transaksi`;
 
     if (!members.length) {
-
         $("members").innerHTML = `
             <tr>
-                <td
-                    colspan="7"
-                    class="empty-cell"
-                >
+                <td colspan="7" class="empty-cell">
                     Belum ada anggota.
                 </td>
             </tr>
         `;
-
     } else {
+        $("members").innerHTML = members.map((member, index) => {
 
-        $("members").innerHTML =
-            members.map((member, index) => {
+            const payment = payments.find(
+                item => item.member_id === member.id
+            );
 
-                const payment =
-                    payments.find(
-                        item =>
-                            item.member_id === member.id
-                    );
+            const state = paymentState(payment);
+            const status = paymentStatusText(state);
+            const target = Number(setting.monthly_amount) || 0;
+            const actualAmount = Number(payment?.amount) || 0;
+            const carryover = paymentCarryover(payment);
+            const total = paymentTotal(payment);
+            const kurang = Math.max(target - total, 0);
 
+            let rowClass = "";
+            let badgeClass = "";
 
-                const state =
-                    paymentState(payment);
+            if (state === "paid") {
+                rowClass = "table-success";
+                badgeClass = "text-bg-success";
+            } else if (state === "partial") {
+                rowClass = "table-warning";
+                badgeClass = "text-bg-warning";
+            } else {
+                rowClass = "table-danger";
+                badgeClass = "text-bg-danger";
+            }
 
+            const paymentDetail = payment
+                ? `
+                    <strong>${money(total)}</strong>
+                    ${carryover > 0 ? `
+                        <div class="payment-help">
+                            Bayar ${money(actualAmount)} + sisa bulan lalu ${money(carryover)}
+                        </div>
+                    ` : ""}
+                `
+                : "-";
 
-                const status =
-                    paymentStatusText(state);
-
-
-                const target =
-                    Number(setting.monthly_amount) || 0;
-
-
-                const amount =
-                    Number(payment?.amount) || 0;
-
-
-                const kurang =
-                    Math.max(
-                        target - amount,
-                        0
-                    );
-
-
-                let rowClass = "";
-
-                let badgeClass = "";
-
-
-                if (state === "paid") {
-
-                    rowClass = "table-success";
-
-                    badgeClass =
-                        "text-bg-success";
-
-                } else if (state === "partial") {
-
-                    rowClass = "table-warning";
-
-                    badgeClass =
-                        "text-bg-warning";
-
-                } else {
-
-                    rowClass = "table-danger";
-
-                    badgeClass =
-                        "text-bg-danger";
-                }
-
-
-                return `
-                    <tr class="${rowClass}">
-
-                        <td>
-                            ${index + 1}
-                        </td>
-
-                        <td>
-                            <strong>
-                                ${esc(member.name)}
-                            </strong>
-                        </td>
-
-                        <td>
-
-                            <span
-                                class="badge ${badgeClass}"
+            return `
+                <tr class="${rowClass}">
+                    <td>${index + 1}</td>
+                    <td><strong>${esc(member.name)}</strong></td>
+                    <td>
+                        <span class="badge ${badgeClass}">${status}</span>
+                        ${state === "partial" ? `
+                            <div class="payment-help">
+                                Kurang ${money(kurang)}
+                            </div>
+                        ` : ""}
+                    </td>
+                    <td>${paymentDetail}</td>
+                    <td>
+                        ${payment?.payment_date && actualAmount > 0
+                            ? fmt(payment.payment_date)
+                            : (carryover > 0 ? "Dari bulan lalu" : "-")}
+                    </td>
+                    <td>
+                        <div class="row-actions">
+                            ${payment
+                                ? `
+                                    <button
+                                        class="btn btn-sm btn-outline-primary"
+                                        onclick="paymentForm('${member.id}','${payment.id}')"
+                                    >
+                                        ${actualAmount > 0 ? "Edit" : "Bayar"}
+                                    </button>
+                                    <button
+                                        class="btn btn-sm btn-outline-danger"
+                                        onclick="delPayment('${payment.id}')"
+                                    >
+                                        Hapus
+                                    </button>
+                                `
+                                : `
+                                    <button
+                                        class="btn btn-sm btn-success"
+                                        onclick="paymentForm('${member.id}')"
+                                    >
+                                        Bayar
+                                    </button>
+                                `}
+                        </div>
+                    </td>
+                    <td>
+                        <div class="row-actions">
+                            <button
+                                class="btn btn-sm btn-outline-primary"
+                                onclick="memberForm('${member.id}')"
                             >
-                                ${status}
-                            </span>
-
-                            ${
-                                state === "partial"
-                                    ? `
-                                        <div class="payment-help">
-                                            Kurang
-                                            ${money(kurang)}
-                                        </div>
-                                    `
-                                    : ""
-                            }
-
-                        </td>
-
-                        <td>
-                            ${
-                                payment
-                                    ? money(amount)
-                                    : "-"
-                            }
-                        </td>
-
-                        <td>
-                            ${
-                                payment
-                                    ? fmt(payment.payment_date)
-                                    : "-"
-                            }
-                        </td>
-
-                        <td>
-
-                            <div class="row-actions">
-
-                                ${
-                                    payment
-                                        ? `
-                                            <button
-                                                class="btn btn-sm btn-outline-primary"
-                                                onclick="paymentForm('${member.id}','${payment.id}')"
-                                            >
-                                                Edit
-                                            </button>
-
-                                            <button
-                                                class="btn btn-sm btn-outline-danger"
-                                                onclick="delPayment('${payment.id}')"
-                                            >
-                                                Hapus
-                                            </button>
-                                        `
-                                        : `
-                                            <button
-                                                class="btn btn-sm btn-success"
-                                                onclick="paymentForm('${member.id}')"
-                                            >
-                                                Bayar
-                                            </button>
-                                        `
-                                }
-
-                            </div>
-
-                        </td>
-
-                        <td>
-
-                            <div class="row-actions">
-
-                                <button
-                                    class="btn btn-sm btn-outline-primary"
-                                    onclick="memberForm('${member.id}')"
-                                >
-                                    Edit
-                                </button>
-
-                                <button
-                                    class="btn btn-sm btn-outline-danger"
-                                    onclick="delMember('${member.id}')"
-                                >
-                                    Hapus
-                                </button>
-
-                            </div>
-
-                        </td>
-
-                    </tr>
-                `;
-
-            }).join("");
+                                Edit
+                            </button>
+                            <button
+                                class="btn btn-sm btn-outline-danger"
+                                onclick="delMember('${member.id}')"
+                            >
+                                Hapus
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }).join("");
     }
 
-
-    /* ================================================
-       TABLE PENGELUARAN
-    ================================================= */
-
     if (!expenses.length) {
-
         $("expenses").innerHTML = `
             <tr>
-                <td
-                    colspan="5"
-                    class="empty-cell"
-                >
+                <td colspan="5" class="empty-cell">
                     Belum ada pengeluaran.
                 </td>
             </tr>
         `;
-
     } else {
-
-        $("expenses").innerHTML =
-            expenses.map((item, index) => {
-
-                return `
-                    <tr>
-
-                        <td>
-                            ${index + 1}
-                        </td>
-
-                        <td>
-                            ${fmt(item.expense_date)}
-                        </td>
-
-                        <td>
-                            ${esc(item.description)}
-                        </td>
-
-                        <td>
-                            <strong>
-                                ${money(item.amount)}
-                            </strong>
-                        </td>
-
-                        <td>
-
-                            <div class="row-actions">
-
-                                <button
-                                    class="btn btn-sm btn-outline-primary"
-                                    onclick="expenseForm('${item.id}')"
-                                >
-                                    Edit
-                                </button>
-
-                                <button
-                                    class="btn btn-sm btn-outline-danger"
-                                    onclick="delExpense('${item.id}')"
-                                >
-                                    Hapus
-                                </button>
-
-                            </div>
-
-                        </td>
-
-                    </tr>
-                `;
-
-            }).join("");
+        $("expenses").innerHTML = expenses.map((item, index) => `
+            <tr>
+                <td>${index + 1}</td>
+                <td>${fmt(item.expense_date)}</td>
+                <td>${esc(item.description)}</td>
+                <td><strong>${money(item.amount)}</strong></td>
+                <td>
+                    <div class="row-actions">
+                        <button
+                            class="btn btn-sm btn-outline-primary"
+                            onclick="expenseForm('${item.id}')"
+                        >
+                            Edit
+                        </button>
+                        <button
+                            class="btn btn-sm btn-outline-danger"
+                            onclick="delExpense('${item.id}')"
+                        >
+                            Hapus
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `).join("");
     }
 }
 
@@ -919,135 +780,98 @@ function paymentForm(
     paymentId = ""
 ) {
 
-    const payment =
-        payments.find(
-            item => item.id === paymentId
-        );
+    const payment = payments.find(
+        item => item.id === paymentId
+    );
 
+    window.currentEditingPaymentId = paymentId;
 
-    const selected =
-        payment
-            ? payment.member_id
-            : memberId;
+    const selected = payment
+        ? payment.member_id
+        : memberId;
 
+    const options = members.length
+        ? members.map(member => `
+            <option
+                value="${member.id}"
+                ${member.id === selected ? "selected" : ""}
+            >
+                ${esc(member.name)}
+            </option>
+        `).join("")
+        : `
+            <option value="">Belum ada anggota</option>
+        `;
 
-    const options =
-        members.length
+    const amount = payment
+        ? Number(payment.amount) || 0
+        : 0;
 
-            ? members.map(member => `
-                <option
-                    value="${member.id}"
-                    ${member.id === selected ? "selected" : ""}
-                >
-                    ${esc(member.name)}
-                </option>
-            `).join("")
-
-            : `
-                <option value="">
-                    Belum ada anggota
-                </option>
-            `;
-
-
-    const amount =
-        payment
-            ? Number(payment.amount)
-            : Number(setting.monthly_amount) || 5000;
-
+    const incomingCarryover =
+        paymentCarryover(payment);
 
     open(
-
-        paymentId
-            ? "Edit Pembayaran"
-            : "Catat Pembayaran",
-
+        paymentId ? "Edit Pembayaran" : "Catat Pembayaran",
         `
             <div class="mb-3">
-
-                <label class="form-label">
-                    Anggota
-                </label>
-
-                <select
-                    id="pm"
-                    class="form-select"
-                >
+                <label class="form-label">Anggota</label>
+                <select id="pm" class="form-select" ${paymentId ? "disabled" : ""}>
                     ${options}
                 </select>
-
             </div>
 
-
             <div class="mb-3">
-
-                <label class="form-label">
-                    Tanggal
-                </label>
-
+                <label class="form-label">Tanggal</label>
                 <input
                     id="pd"
                     type="date"
                     class="form-control"
-                    value="${
-                        payment
-                            ? payment.payment_date
-                            : localDate(new Date())
-                    }"
+                    value="${payment
+                        ? payment.payment_date
+                        : localDate(new Date())}"
                 >
-
             </div>
 
-
             <div class="mb-3">
-
-                <label class="form-label">
-                    Jumlah
-                </label>
-
+                <label class="form-label">Jumlah yang dibayar</label>
                 <input
                     id="pa"
                     type="number"
                     min="1"
                     class="form-control"
-                    value="${amount}"
+                    value="${amount || ""}"
+                    placeholder="Contoh: 5000"
                 >
 
-                <div class="payment-help">
+                <div class="payment-help mt-2">
                     Nominal kas bulan ini:
-                    <strong>
-                        ${money(setting.monthly_amount)}
-                    </strong>
+                    <strong>${money(setting.monthly_amount)}</strong>
                 </div>
 
-                <div id="paymentNotice"></div>
+                ${incomingCarryover > 0 ? `
+                    <div class="alert alert-info py-2 mt-2 mb-0 small">
+                        <i class="bi bi-arrow-down-circle me-1"></i>
+                        Ada sisa dari bulan lalu sebesar
+                        <strong>${money(incomingCarryover)}</strong>.
+                        Sisa ini otomatis dihitung untuk bulan ini.
+                    </div>
+                ` : ""}
 
+                <div id="paymentNotice"></div>
             </div>
 
-
             <div class="d-flex justify-content-end gap-2">
-
-                <button
-                    class="btn btn-secondary"
-                    onclick="closeModal()"
-                >
+                <button class="btn btn-secondary" onclick="closeModal()">
                     Batal
                 </button>
-
-                <button
-                    class="btn btn-success"
-                    onclick="savePayment('${paymentId}')"
-                >
+                <button class="btn btn-success" onclick="savePayment('${paymentId}')">
                     Simpan
                 </button>
-
             </div>
         `
     );
 
-
     updatePaymentNotice();
-
 
     $("pa").addEventListener(
         "input",
@@ -1055,18 +879,12 @@ function paymentForm(
     );
 }
 
-
 function updatePaymentNotice() {
 
-    const input =
-        $("pa");
-
-    const notice =
-        $("paymentNotice");
-
+    const input = $("pa");
+    const notice = $("paymentNotice");
 
     if (!input || !notice) return;
-
 
     const target =
         Number(setting.monthly_amount) || 0;
@@ -1074,149 +892,370 @@ function updatePaymentNotice() {
     const amount =
         Number(input.value) || 0;
 
+    const payment = payments.find(
+        item => item.id === window.currentEditingPaymentId
+    );
 
-    if (
-        amount > 0 &&
-        amount < target
-    ) {
+    const incomingCarryover =
+        paymentCarryover(payment);
 
+    const total =
+        amount + incomingCarryover;
+
+    const nextCarry =
+        Math.max(total - target, 0);
+
+    if (total > 0 && total < target) {
         notice.innerHTML = `
-            <div class="payment-warning">
-                Pembayaran masih kurang
-                <strong>
-                    ${money(target - amount)}
-                </strong>.
+            <div class="payment-warning mt-2">
+                Total untuk bulan ini
+                <strong>${money(total)}</strong>.
+                Masih kurang <strong>${money(target - total)}</strong>.
             </div>
         `;
-
-    } else if (
-        amount >= target &&
-        target > 0
-    ) {
+    } else if (total >= target && target > 0) {
+        const coveredMonths =
+            Math.floor(total / target);
 
         notice.innerHTML = `
-            <div class="text-success small">
+            <div class="text-success small mt-2">
                 <i class="bi bi-check-circle"></i>
-                Pembayaran sudah mencapai nominal kas.
+                Pembayaran ini cukup untuk
+                <strong>${coveredMonths} bulan</strong>.
+                ${nextCarry > 0
+                    ? `Sisa <strong>${money(nextCarry)}</strong> akan otomatis diteruskan ke bulan-bulan berikutnya sampai habis.`
+                    : "Tidak ada sisa untuk bulan berikutnya."}
             </div>
         `;
-
     } else {
-
         notice.innerHTML = "";
     }
+}
+
+async function recalculateMemberCarryovers(memberId) {
+
+    const { data: rowsData, error: fetchError } =
+        await db
+            .from("payments")
+            .select("*")
+            .eq("user_id", user.id)
+            .eq("member_id", memberId)
+            .order("month");
+
+    if (fetchError) throw fetchError;
+
+    const rows = (rowsData || []).sort((a, b) =>
+        String(a.month || "").localeCompare(
+            String(b.month || "")
+        )
+    );
+
+    if (!rows.length) return;
+
+    const target =
+        Number(setting.monthly_amount) || 0;
+
+    /*
+     * Rekonstruksi alur sisa pembayaran dari bulan paling awal.
+     *
+     * Contoh target Rp1.000 dan bayar Rp8.000:
+     * September: tunai 8.000 + sisa 0     = 8.000 -> sisa 7.000
+     * Oktober:   tunai 0 + sisa 7.000     = 7.000 -> sisa 6.000
+     * November:  tunai 0 + sisa 6.000     = 6.000 -> sisa 5.000
+     * dan seterusnya sampai sisa habis.
+     *
+     * Jadi satu pembayaran besar bisa otomatis menutup
+     * beberapa bulan sekaligus.
+     */
+
+    let carryIntoMonth = 0;
+    let currentMonth = rows[0].month
+        ? parseMonthInput(rows[0].month)
+        : null;
+
+    if (!currentMonth) return;
+
+    let rowIndex = 0;
+
+    while (rowIndex < rows.length || carryIntoMonth > 0) {
+
+        const currentKey = key(currentMonth);
+
+        let payment =
+            rows[rowIndex] &&
+            rows[rowIndex].month === currentKey
+                ? rows[rowIndex]
+                : null;
+
+        /*
+         * Jika tidak ada pembayaran pada bulan ini tetapi masih ada
+         * sisa, buat baris otomatis untuk bulan tersebut.
+         */
+        if (!payment && carryIntoMonth > 0) {
+
+            const { data: inserted, error: insertError } =
+                await db
+                    .from("payments")
+                    .insert({
+                        member_id: memberId,
+                        payment_date: localDate(currentMonth),
+                        amount: 0,
+                        carryover_amount: carryIntoMonth,
+                        user_id: user.id,
+                        month: currentKey
+                    })
+                    .select("*")
+                    .single();
+
+            if (insertError) throw insertError;
+
+            payment = inserted;
+
+            rows.splice(rowIndex, 0, payment);
+        }
+
+        /*
+         * Jika tidak ada baris dan tidak ada sisa, lanjut ke
+         * pembayaran historis berikutnya jika memang ada.
+         */
+        if (!payment) {
+
+            if (rowIndex < rows.length) {
+                currentMonth = new Date(
+                    currentMonth.getFullYear(),
+                    currentMonth.getMonth() + 1,
+                    1
+                );
+                continue;
+            }
+
+            break;
+        }
+
+        const actualAmount =
+            Number(payment.amount) || 0;
+
+        const newCarryover =
+            Math.max(carryIntoMonth, 0);
+
+        /*
+         * Baris otomatis yang sudah tidak mendapat sisa lagi
+         * harus dihapus.
+         */
+        if (
+            actualAmount <= 0 &&
+            newCarryover <= 0
+        ) {
+
+            const { error: deleteError } =
+                await db
+                    .from("payments")
+                    .delete()
+                    .eq("id", payment.id)
+                    .eq("user_id", user.id);
+
+            if (deleteError) throw deleteError;
+
+            rows.splice(rowIndex, 1);
+
+            /*
+             * Jangan menaikkan rowIndex karena array bergeser.
+             * Setelah dihapus, tidak ada sisa untuk bulan berikutnya.
+             */
+            break;
+        }
+
+        if (
+            Number(payment.carryover_amount || 0) !==
+            newCarryover
+        ) {
+
+            const { error: updateError } =
+                await db
+                    .from("payments")
+                    .update({
+                        carryover_amount: newCarryover
+                    })
+                    .eq("id", payment.id)
+                    .eq("user_id", user.id);
+
+            if (updateError) throw updateError;
+
+            payment.carryover_amount =
+                newCarryover;
+        }
+
+        const total =
+            actualAmount + newCarryover;
+
+        const nextCarryover =
+            Math.max(total - target, 0);
+
+        rowIndex++;
+
+        currentMonth = new Date(
+            currentMonth.getFullYear(),
+            currentMonth.getMonth() + 1,
+            1
+        );
+
+        carryIntoMonth =
+            nextCarryover;
+
+        /*
+         * Jika sudah tidak ada sisa, tetap lanjut memeriksa
+         * baris historis berikutnya. Ini penting agar baris
+         * auto-carryover lama yang sudah tidak diperlukan
+         * bisa dibersihkan.
+         */
+    }
+}
+
+
+async function syncNextMonthCarryover(
+    memberId,
+    sourceMonth,
+    carryoverAmount
+) {
+
+    /*
+     * Setelah pembayaran berubah, bangun ulang seluruh rantai
+     * sisa untuk anggota tersebut. Bukan hanya satu bulan.
+     */
+    await recalculateMemberCarryovers(memberId);
 }
 
 
 async function savePayment(paymentId) {
 
-    const member_id =
-        $("pm").value;
+    const member_id = $("pm").value;
+    const payment_date = $("pd").value;
+    const amount = Number($("pa").value);
 
-    const payment_date =
-        $("pd").value;
-
-    const amount =
-        Number($("pa").value);
-
-
-    if (
-        !member_id ||
-        !payment_date ||
-        amount <= 0
-    ) {
-
-        toast("Lengkapi data pembayaran.");
-
+    if (!member_id || !payment_date || amount <= 0) {
+        toast("Masukkan jumlah pembayaran yang valid.");
         return;
     }
 
+    const oldPayment = paymentId
+        ? payments.find(item => item.id === paymentId)
+        : null;
 
-    const duplicate =
-        payments.some(
-            item =>
-                item.member_id === member_id &&
-                item.id !== paymentId
-        );
-
+    const duplicate = payments.some(
+        item =>
+            item.member_id === member_id &&
+            item.id !== paymentId
+    );
 
     if (duplicate) {
-
-        toast(
-            "Anggota sudah memiliki pembayaran bulan ini. Gunakan Edit."
-        );
-
+        toast("Anggota sudah memiliki catatan pembayaran bulan ini. Gunakan Edit.");
         return;
     }
 
+    const incomingCarryover =
+        paymentCarryover(oldPayment);
+
+    const target =
+        Number(setting.monthly_amount) || 0;
+
+    const total =
+        amount + incomingCarryover;
+
+    const nextCarryover =
+        Math.max(total - target, 0);
 
     const data = {
         member_id,
         payment_date,
         amount,
+        carryover_amount: incomingCarryover,
         user_id: user.id,
         month: key(month)
     };
 
-
     const query = paymentId
-
         ? db
             .from("payments")
             .update({
                 member_id,
                 payment_date,
-                amount
+                amount,
+                carryover_amount: incomingCarryover
             })
             .eq("id", paymentId)
             .eq("user_id", user.id)
-
         : db
             .from("payments")
             .insert(data);
 
-
-    const { error } =
-        await query;
-
+    const { data: savedPayment, error } =
+        await query.select("*").single();
 
     if (error) {
-
         toast(error.message);
-
         return;
     }
 
+    try {
+        await syncNextMonthCarryover(
+            member_id,
+            month,
+            nextCarryover
+        );
 
+        if (
+            oldPayment &&
+            oldPayment.member_id !== member_id
+        ) {
+            await syncNextMonthCarryover(
+                oldPayment.member_id,
+                month,
+                0
+            );
+        }
+    } catch (carryError) {
+        toast(`Pembayaran tersimpan, tetapi sisa bulan depan gagal diperbarui: ${carryError.message}`);
+        await load();
+        return;
+    }
+
+    window.currentEditingPaymentId = null;
     closeModal();
-
     await load();
 }
 
-
 async function delPayment(id) {
 
-    if (!confirm("Hapus pembayaran?")) {
-
+    if (!confirm("Hapus pembayaran? Jika ada sisa untuk bulan depan, sisa tersebut juga akan dibatalkan.")) {
         return;
     }
 
+    const payment = payments.find(
+        item => item.id === id
+    );
 
-    const { error } =
-        await db
-            .from("payments")
-            .delete()
-            .eq("id", id)
-            .eq("user_id", user.id);
-
+    const { error } = await db
+        .from("payments")
+        .delete()
+        .eq("id", id)
+        .eq("user_id", user.id);
 
     if (error) {
-
         toast(error.message);
-
         return;
     }
 
+    if (payment) {
+        try {
+            await syncNextMonthCarryover(
+                payment.member_id,
+                month,
+                0
+            );
+        } catch (carryError) {
+            toast(`Pembayaran dihapus, tetapi sisa bulan depan gagal diperbarui: ${carryError.message}`);
+        }
+    }
 
     await load();
 }
@@ -1422,6 +1461,38 @@ async function delExpense(id) {
    SETTING NOMINAL
 ===================================================== */
 
+async function recalculateAllCarryovers(targetAmount) {
+
+    /*
+     * Gunakan nominal baru untuk menghitung ulang seluruh
+     * rantai sisa setiap anggota.
+     */
+    setting.monthly_amount = Number(targetAmount) || 0;
+
+    const { data: allPayments, error } =
+        await db
+            .from("payments")
+            .select("*")
+            .eq("user_id", user.id)
+            .order("member_id")
+            .order("month");
+
+    if (error) throw error;
+
+    const memberIds = [
+        ...new Set(
+            (allPayments || [])
+                .map(payment => payment.member_id)
+                .filter(Boolean)
+        )
+    ];
+
+    for (const memberId of memberIds) {
+        await recalculateMemberCarryovers(memberId);
+    }
+}
+
+
 async function saveSetting() {
 
     const monthly_amount =
@@ -1461,13 +1532,36 @@ async function saveSetting() {
     }
 
 
+    try {
+
+        await recalculateAllCarryovers(
+            monthly_amount
+        );
+
+    } catch (carryError) {
+
+        toast(
+            `Nominal berhasil disimpan, tetapi sisa pembayaran gagal disesuaikan: ${carryError.message}`
+        );
+
+        setting.monthly_amount =
+            monthly_amount;
+
+        await load();
+
+        return;
+    }
+
+
     setting.monthly_amount =
         monthly_amount;
 
 
-    render();
+    await load();
 
-    toast("Nominal kas berhasil disimpan.");
+    toast(
+        "Nominal kas berhasil disimpan dan sisa pembayaran sudah disesuaikan."
+    );
 }
 
 
@@ -1512,62 +1606,41 @@ function makeMonthRows(
 
             const payment =
                 monthPayments.find(
-                    item =>
-                        item.member_id === member.id
+                    item => item.member_id === member.id
                 );
 
-
-            const amount =
+            const actualAmount =
                 Number(payment?.amount) || 0;
 
+            const carryover =
+                paymentCarryover(payment);
 
-            let status =
-                "BELUM BAYAR";
+            const amount =
+                actualAmount + carryover;
 
-
+            let status = "BELUM BAYAR";
             let shortage = 0;
 
-
             if (amount >= targetAmount && targetAmount > 0) {
-
-                status =
-                    "SUDAH LUNAS";
-
+                status = "SUDAH LUNAS";
             } else if (amount > 0) {
-
-                status =
-                    "MASIH KURANG";
-
-                shortage =
-                    targetAmount - amount;
+                status = "MASIH KURANG";
+                shortage = targetAmount - amount;
             }
 
-
             return {
-
                 No: index + 1,
-
                 Nama: member.name,
-
                 Bulan: monthName(targetMonth),
-
-                "Target Kas":
-                    targetAmount,
-
-                "Jumlah Bayar":
-                    amount,
-
-                Status:
-                    status,
-
-                Kekurangan:
-                    shortage,
-
-                "Tanggal Bayar":
-                    payment
-                        ? payment.payment_date
-                        : ""
-
+                "Target Kas": targetAmount,
+                "Jumlah Bayar": actualAmount,
+                "Sisa Bulan Lalu": carryover,
+                "Total Dihitung": amount,
+                Status: status,
+                Kekurangan: shortage,
+                "Tanggal Bayar": payment && actualAmount > 0
+                    ? payment.payment_date
+                    : ""
             };
         }
     );
@@ -1650,6 +1723,14 @@ function downloadForm() {
 
 
             <div class="d-grid gap-2">
+
+                <button
+                    class="btn btn-success"
+                    onclick="downloadExcelRange()"
+                >
+                    <i class="bi bi-file-earmark-excel me-1"></i>
+                    Download Excel
+                </button>
 
                 <button
                     class="btn btn-danger"
@@ -1977,16 +2058,13 @@ async function downloadExcelRange() {
                         Bulan: row.Bulan,
                         No: row.No,
                         Nama: row.Nama,
-                        "Target Kas":
-                            row["Target Kas"],
-                        "Jumlah Bayar":
-                            row["Jumlah Bayar"],
-                        Status:
-                            row.Status,
-                        Kekurangan:
-                            row.Kekurangan,
-                        "Tanggal Bayar":
-                            row["Tanggal Bayar"]
+                        "Target Kas": row["Target Kas"],
+                        "Bayar Tunai": row["Jumlah Bayar"],
+                        "Sisa Bulan Lalu": row["Sisa Bulan Lalu"],
+                        "Total Dihitung": row["Total Dihitung"],
+                        Status: row.Status,
+                        Kekurangan: row.Kekurangan,
+                        "Tanggal Bayar": row["Tanggal Bayar"]
                     });
 
                 }
@@ -2276,7 +2354,9 @@ async function downloadPdfRange() {
                     "No",
                     "Nama",
                     "Status",
-                    "Jumlah",
+                    "Bayar Tunai",
+                    "Sisa Lalu",
+                    "Total",
                     "Kurang",
                     "Tanggal"
                 ]],
@@ -2284,29 +2364,20 @@ async function downloadPdfRange() {
                 body:
                     monthly.statusRows.map(
                         row => [
-
                             row.No,
-
                             row.Nama,
-
                             row.Status,
-
-                            money(
-                                row["Jumlah Bayar"]
-                            ),
-
-                            row.Kekurangan > 0
-                                ? money(
-                                    row.Kekurangan
-                                )
+                            money(row["Jumlah Bayar"]),
+                            row["Sisa Bulan Lalu"] > 0
+                                ? money(row["Sisa Bulan Lalu"])
                                 : "-",
-
+                            money(row["Total Dihitung"]),
+                            row.Kekurangan > 0
+                                ? money(row.Kekurangan)
+                                : "-",
                             row["Tanggal Bayar"]
-                                ? fmt(
-                                    row["Tanggal Bayar"]
-                                )
+                                ? fmt(row["Tanggal Bayar"])
                                 : "-"
-
                         ]
                     ),
 
