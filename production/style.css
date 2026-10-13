@@ -1,0 +1,82 @@
+/* =====================================================
+   DASAR
+===================================================== */
+
+* { box-sizing: border-box; }
+body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+
+/* =====================================================
+   LOGO LOGIN
+===================================================== */
+.login-logo { width: 70px; height: 70px; display: flex; align-items: center; justify-content: center; overflow: hidden; border-radius: 15px; background: #fff; }
+.login-logo img { width: 100%; height: 100%; object-fit: contain; }
+
+/* =====================================================
+   LOGO NAVBAR
+===================================================== */
+.navbar-logo { width: 50px !important; height: 50px !important; min-width: 50px !important; min-height: 50px !important; max-width: 50px !important; max-height: 50px !important; display: flex !important; align-items: center !important; justify-content: center !important; overflow: hidden !important; padding: 0 !important; margin: 0 !important; background: transparent !important; border-radius: 0 !important; }
+.navbar-logo img { width: 50px !important; height: 50px !important; min-width: 50px !important; min-height: 50px !important; max-width: 50px !important; max-height: 50px !important; display: block !important; object-fit: contain !important; }
+
+/* =====================================================
+   NAVBAR
+===================================================== */
+.navbar-brand { font-size: 1.05rem; }
+.navbar-brand:hover { color: inherit; }
+
+/* ================================
+   NAVIGASI BULAN
+================================ */
+.month-navigation { display: flex; align-items: center; justify-content: space-between; position: relative; min-height: 70px; }
+.month-title { position: absolute; left: 50%; transform: translateX(-50%); }
+.month-buttons { width: 100%; display: flex; justify-content: space-between; align-items: center; }
+
+/* ================================
+   MODE HP
+================================ */
+@media (max-width: 576px) {
+    .month-navigation { display: flex; flex-direction: column; gap: 12px; min-height: auto; }
+    .month-title { position: static; transform: none; order: 1; }
+    .month-buttons { order: 2; width: 100%; justify-content: center; gap: 10px; }
+    .month-buttons .btn { flex: 1; max-width: 160px; }
+}
+
+/* =====================================================
+   TABLE
+===================================================== */
+.table td, .table th { white-space: nowrap; vertical-align: middle; }
+.table td:nth-child(2) { white-space: normal; min-width: 150px; }
+
+/* =====================================================
+   STATUS
+===================================================== */
+.status-badge { display: inline-block; font-size: 0.75rem; font-weight: 700; padding: 0.35rem 0.55rem; border-radius: 50rem; }
+
+/* =====================================================
+   FORM PEMBAYARAN
+===================================================== */
+.payment-help { font-size: 0.75rem; color: #6c757d; margin-top: 0.2rem; }
+.payment-warning { font-size: 0.8rem; color: #664d03; background: #fff3cd; border: 1px solid #ffecb5; padding: 0.55rem 0.7rem; border-radius: 0.5rem; margin-top: 0.25rem; }
+
+/* =====================================================
+   EMPTY TABLE
+===================================================== */
+.empty-cell { text-align: center !important; color: #6c757d; padding: 2rem !important; }
+
+/* =====================================================
+   TOMBOL AKSI
+===================================================== */
+.row-actions { display: flex; flex-wrap: wrap; gap: 5px; }
+.row-actions .btn { white-space: nowrap; }
+
+/* ================================
+   DOWNLOAD FORM
+================================ */
+.download-info { font-size: 0.85rem; color: #6c757d; }
+
+/* =====================================================
+   RESPONSIVE
+===================================================== */
+@media (max-width: 576px) {
+    .table { font-size: 0.875rem; }
+    .navbar-logo { width: 28px !important; height: 28px !important; min-width: 28px !important; min-height: 28px !important; max-width: 28px !important; max-height: 28px !important; }
+}

@@ -3,10 +3,9 @@
 ===================================================== */
 
 const SUPABASE_URL =
-    "https://hwzyfzsuabphminlhvqw.supabase.co";
 
 const SUPABASE_ANON_KEY =
-    "sb_publishable_zoje27FnGfWpCIFfeZaTnA_Q0AgM5y-";
+
 
 const db = supabase.createClient(
     SUPABASE_URL,
